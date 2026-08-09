@@ -27,7 +27,7 @@ services:
       retries: 5
 
   milvus:
-    image: docker.m.daocloud.io/milvusdb/milvus:v2.4.9
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/milvusdb/milvus:v2.4.9
     command: ["milvus", "run", "standalone"]
     environment:
       ETCD_ENDPOINTS: etcd:2379
