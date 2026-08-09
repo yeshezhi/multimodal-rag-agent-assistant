@@ -4,6 +4,7 @@ __pycache__
 *.py[cod]
 .env
 .env.server
+.env.docker
 data
 logs
 models
