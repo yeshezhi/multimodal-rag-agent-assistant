@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 
@@ -14,9 +14,10 @@ class SourceDocument:
     source_name: str
     location: str
     text: str
+    metadata: dict = field(default_factory=dict)
 
 
-def parse_document(filename: str, content: bytes) -> list[SourceDocument]:
+def parse_document(filename: str, content: bytes, metadata: dict | None = None) -> list[SourceDocument]:
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
         raise ValueError(f"不支持的文件类型：{suffix or '无扩展名'}")
@@ -27,7 +28,7 @@ def parse_document(filename: str, content: bytes) -> list[SourceDocument]:
         for page_number, page in enumerate(reader.pages, start=1):
             text = page.extract_text() or ""
             if text.strip():
-                documents.append(SourceDocument(filename, f"第 {page_number} 页", text))
+                documents.append(SourceDocument(filename, f"第 {page_number} 页", text, metadata or {}))
         return documents
 
     if suffix == ".docx":
@@ -36,4 +37,4 @@ def parse_document(filename: str, content: bytes) -> list[SourceDocument]:
     else:
         text = content.decode("utf-8", errors="replace")
 
-    return [SourceDocument(filename, "全文", text)] if text.strip() else []
+    return [SourceDocument(filename, "全文", text, metadata or {})] if text.strip() else []

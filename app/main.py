@@ -111,15 +111,27 @@ async def ingest_documents(
             json_schema_extra={"format": "binary"},
         ),
     ],
+    department: Annotated[str, Form()] = "未分类",
+    document_type: Annotated[str, Form()] = "其他",
+    classification: Annotated[str, Form()] = "内部",
+    effective_date: Annotated[str, Form()] = "未标注",
+    tags: Annotated[str, Form()] = "",
 ) -> IngestResponse:
     settings = get_settings()
     documents = []
+    metadata = {
+        "department": department,
+        "document_type": document_type,
+        "classification": classification,
+        "effective_date": effective_date,
+        "tags": tags,
+    }
     for file in files:
         content = await file.read()
         if len(content) > settings.max_upload_mb * 1024 * 1024:
             raise HTTPException(status_code=413, detail=f"{file.filename} 超过上传限制。")
         try:
-            documents.extend(parse_document(file.filename or "unnamed", content))
+            documents.extend(parse_document(file.filename or "unnamed", content, metadata))
         except ValueError as error:
             raise HTTPException(status_code=415, detail=str(error)) from error
         except Exception as error:
@@ -211,7 +223,9 @@ async def multimodal_rag_query(
 def chat(request: ChatRequest) -> ChatResponse:
     started_at = perf_counter()
     try:
-        response, trace = get_service().chat_with_trace(request.question, request.top_k)
+        response, trace = get_service().chat_with_trace(
+            request.question, request.top_k, request.department, request.document_type, request.tag
+        )
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     get_observability().record(
@@ -266,8 +280,8 @@ def image_knowledge_base_status() -> ImageKnowledgeBaseStatus:
 @app.get("/api/v1/documents", response_model=DocumentListResponse)
 def list_documents() -> DocumentListResponse:
     documents = [
-        DocumentSummary(source_name=source_name, chunks=chunks)
-        for source_name, chunks in get_service().list_documents()
+        DocumentSummary(**source)
+        for source in get_service().list_documents()
     ]
     return DocumentListResponse(documents=documents)
 

@@ -16,5 +16,9 @@
   {"question": "使用超过 4 张 GPU 的训练任务申请时需要说明哪些信息？", "expected_source": "模型训练平台资源管理规范.md"},
   {"question": "GPU 长时间低利用率时，平台在多久后会自动释放资源？", "expected_source": "模型训练平台资源管理规范.md"},
   {"question": "项目验收完成后，交付副本需要保留多少年？", "expected_source": "客户数据与项目文档管理规范.md"},
-  {"question": "包含模型权重和个人信息的资料对外发送前，需要谁批准？", "expected_source": "客户数据与项目文档管理规范.md"}
+  {"question": "包含模型权重和个人信息的资料对外发送前，需要谁批准？", "expected_source": "客户数据与项目文档管理规范.md"},
+  {"question": "GPU 温度高于多少度时应立即停止训练任务？", "department": "基础设施部", "expected_source": "服务器GPU故障处理手册.md"},
+  {"question": "使用超过 4 张 GPU 的训练任务申请时需要说明哪些信息？", "department": "AI平台部", "document_type": "平台规范", "expected_source": "模型训练平台资源管理规范.md"},
+  {"question": "哪些账号必须开启多因素认证？", "department": "信息安全部", "tag": "MFA", "expected_source": "信息安全与账号权限管理制度.md"},
+  {"question": "项目验收完成后，交付副本需要保留多少年？", "department": "数据治理部", "document_type": "数据制度", "expected_source": "客户数据与项目文档管理规范.md"}
 ]

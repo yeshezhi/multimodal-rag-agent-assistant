@@ -10,6 +10,9 @@ class IngestResponse(BaseModel):
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4_000)
     top_k: int | None = Field(default=None, ge=1, le=15)
+    department: str | None = Field(default=None, max_length=80)
+    document_type: str | None = Field(default=None, max_length=80)
+    tag: str | None = Field(default=None, max_length=80)
 
 
 class Citation(BaseModel):
@@ -18,6 +21,11 @@ class Citation(BaseModel):
     location: str
     score: float
     excerpt: str
+    department: str
+    document_type: str
+    classification: str
+    effective_date: str
+    tags: list[str]
 
 
 class ChatResponse(BaseModel):
@@ -33,6 +41,11 @@ class KnowledgeBaseStatus(BaseModel):
 class DocumentSummary(BaseModel):
     source_name: str
     chunks: int
+    department: str
+    document_type: str
+    classification: str
+    effective_date: str
+    tags: list[str]
 
 
 class DocumentListResponse(BaseModel):

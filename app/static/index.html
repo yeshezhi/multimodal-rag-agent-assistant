@@ -44,12 +44,13 @@
     .multimodal-question { width:100%; min-height:72px; margin-top:10px; padding:10px; border:1px solid var(--line); border-radius:10px; font:inherit; resize:vertical; }
     .section-head h2 { margin:0; } .text-button { width:auto; padding:7px 10px; color:#b42318; background:#fff; border:1px solid #f7c8c5; font-size:12px; }
     .text-button:hover:not(:disabled) { background:#fff0ef; color:#8d1e16; }
-    .source-list { display:grid; gap:8px; } .source-row { display:flex; gap:10px; align-items:center; padding:10px 0; border-top:1px solid #eef2f7; }
+    .source-list { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; gap:8px; } .source-row { display:flex; min-width:0; gap:10px; align-items:center; padding:10px 0; border-top:1px solid #eef2f7; }
     .source-row:first-child { border-top:0; } .source-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:650; }
     .source-meta { color:var(--muted); font-size:12px; white-space:nowrap; } .remove-button { width:auto; padding:5px 8px; color:#b42318; background:transparent; border:1px solid #f7c8c5; font-size:12px; }
     .remove-button:hover { background:#fff0ef; } .empty-sources { color:var(--muted); font-size:13px; padding:5px 0; }
     textarea { width:100%; min-height:118px; resize:vertical; padding:13px; border:1px solid var(--line); border-radius:11px; color:var(--ink); font:inherit; line-height:1.55; outline:none; }
     textarea:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+    .filter-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:9px; margin:0 0 12px; } .filter-grid input,.filter-grid select { width:100%; min-height:39px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:#fff; color:var(--ink); font:inherit; font-size:13px; } .filter-grid input:focus,.filter-grid select:focus { outline:none; border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
     .chat button { margin-top:12px; }
     .answer { display:none; margin-top:22px; border-top:1px solid var(--line); padding-top:20px; }
     .answer.visible { display:block; }
@@ -62,7 +63,7 @@
     .citation b { font-size:13px; } .citation span { color:var(--muted); font-size:12px; }
     .citation p { margin:7px 0 0; color:#475467; font-size:13px; line-height:1.55; }
     .monitoring { grid-column:1 / -1; } .monitor-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:16px 0; } .metric { padding:14px; border:1px solid #e3eaf5; border-radius:12px; background:#fafcff; } .metric b { display:block; margin-bottom:5px; color:var(--blue); font-size:24px; letter-spacing:-.04em; } .metric span { color:var(--muted); font-size:12px; } .event-list { display:grid; gap:7px; } .event-row { display:grid; grid-template-columns:110px minmax(0,1fr) 94px 86px; gap:12px; align-items:center; padding:10px 0; border-top:1px solid #eef2f7; font-size:13px; } .event-row b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .event-row span { color:var(--muted); font-size:12px; } .event-row .event-ok { color:#087350; } .event-row .event-refused { color:#a15c00; } .evaluation-note { margin:12px 0 0; padding:11px; border-radius:10px; background:var(--soft-blue); color:#314a71; font-size:13px; line-height:1.55; }
-    @media (max-width:760px) { main { width:min(100% - 24px,1060px); padding-top:32px; } header { align-items:flex-start; flex-direction:column; gap:12px; } .grid { grid-template-columns:1fr; } .chat { grid-row:auto; } .vision-grid,.monitor-grid { grid-template-columns:1fr; } .event-row { grid-template-columns:1fr; gap:3px; } section { padding:20px; } }
+    @media (max-width:760px) { main { width:calc(100% - 24px); max-width:1060px; padding-top:32px; } header { align-items:flex-start; flex-direction:column; gap:12px; } .grid { grid-template-columns:minmax(0,1fr); } .chat { grid-row:auto; } .vision-grid,.monitor-grid,.filter-grid { grid-template-columns:1fr; } .event-row { grid-template-columns:1fr; gap:3px; } section { min-width:0; padding:20px; } }
   </style>
 </head>
 <body>
@@ -79,14 +80,16 @@
           <label class="dropzone" for="files"><strong>选择文档</strong><span>可一次选择多个文件</span></label>
           <input id="files" name="files" type="file" multiple accept=".pdf,.docx,.md,.markdown,.txt">
           <div class="file-list" id="file-list">尚未选择文件</div>
+          <div class="filter-grid"><input id="upload-department" placeholder="部门，例如：基础设施部"><input id="upload-type" placeholder="文档类型，例如：运维手册"><input id="upload-tags" placeholder="标签，逗号分隔"><select id="upload-classification"><option value="内部">内部</option><option value="受限">受限</option><option value="公开">公开</option></select><input id="upload-effective-date" placeholder="生效日期，例如：2026-08-01"></div>
           <button id="upload-button" type="submit">上传并建立索引</button>
           <div class="message" id="upload-message"></div>
         </form>
       </section>
       <section class="chat">
         <h2>开始提问</h2>
-        <p class="hint">仅当检索内容达到相关性阈值时才生成回答；引用默认折叠，可按需展开。</p>
+        <p class="hint">可按部门、文档类型或标签缩小检索范围；仅当检索内容达到相关性阈值时才生成回答。</p>
         <form id="chat-form">
+          <div class="filter-grid"><select id="filter-department"><option value="">全部部门</option></select><select id="filter-type"><option value="">全部文档类型</option></select><input id="filter-tag" placeholder="标签筛选，例如：GPU"><div></div></div>
           <textarea id="question" placeholder="例如：GPU 温度过高时应该如何处理？" required></textarea>
           <button id="chat-button" type="submit">获取答案</button>
           <div class="message" id="chat-message"></div>
@@ -146,7 +149,10 @@
     function renderDocuments(documents) {
       const list = byId('source-list'); list.replaceChildren();
       if (!documents.length) { const empty = document.createElement('div'); empty.className = 'empty-sources'; empty.textContent = '尚未上传文档'; list.append(empty); return; }
-      documents.forEach(sourceDocument => { const row = document.createElement('div'); row.className = 'source-row'; const name = document.createElement('div'); name.className = 'source-name'; name.title = sourceDocument.source_name; name.textContent = sourceDocument.source_name; const meta = document.createElement('div'); meta.className = 'source-meta'; meta.textContent = `${sourceDocument.chunks} 个文本块`; const remove = document.createElement('button'); remove.className = 'remove-button'; remove.type = 'button'; remove.textContent = '删除'; remove.addEventListener('click', async () => { if (!confirm(`确认删除《${sourceDocument.source_name}》及其全部索引吗？`)) return; const response = await fetch(`${api}/documents/${encodeURIComponent(sourceDocument.source_name)}`, {method:'DELETE'}); if (!response.ok) return setMessage('upload-message', await readError(response), true); setMessage('upload-message', `已删除《${sourceDocument.source_name}》。`); await refreshStatus(); }); row.append(name, meta, remove); list.append(row); });
+      documents.forEach(sourceDocument => { const row = document.createElement('div'); row.className = 'source-row'; const name = document.createElement('div'); name.className = 'source-name'; name.title = sourceDocument.source_name; name.textContent = sourceDocument.source_name; const meta = document.createElement('div'); meta.className = 'source-meta'; meta.title = `${sourceDocument.department} · ${sourceDocument.document_type} · ${sourceDocument.tags.join('、')}`; meta.textContent = `${sourceDocument.department} · ${sourceDocument.document_type}`; const remove = document.createElement('button'); remove.className = 'remove-button'; remove.type = 'button'; remove.textContent = '删除'; remove.addEventListener('click', async () => { if (!confirm(`确认删除《${sourceDocument.source_name}》及其全部索引吗？`)) return; const response = await fetch(`${api}/documents/${encodeURIComponent(sourceDocument.source_name)}`, {method:'DELETE'}); if (!response.ok) return setMessage('upload-message', await readError(response), true); setMessage('upload-message', `已删除《${sourceDocument.source_name}》。`); await refreshStatus(); }); row.append(name, meta, remove); list.append(row); });
+    }
+    function renderFilterOptions(documents) {
+      [['filter-department', 'department', '全部部门'], ['filter-type', 'document_type', '全部文档类型']].forEach(([id, key, label]) => { const select = byId(id); const selected = select.value; select.replaceChildren(); const empty = document.createElement('option'); empty.value = ''; empty.textContent = label; select.append(empty); [...new Set(documents.map(item => item[key]))].sort().forEach(value => { const option = document.createElement('option'); option.value = value; option.textContent = value; if (value === selected) option.selected = true; select.append(option); }); });
     }
     async function refreshStatus() {
       try {
@@ -155,6 +161,7 @@
         byId('chunk-count').textContent = data.chunks;
         byId('dimension').textContent = data.vector_dimension ? `${data.vector_dimension} 维向量` : '尚未建立向量索引';
         renderDocuments(documentData.documents);
+        renderFilterOptions(documentData.documents);
         byId('connection-status').textContent = '知识库连接正常';
       } catch { byId('connection-status').textContent = '无法连接知识库'; }
       await refreshImageStatus();
@@ -186,7 +193,7 @@
       event.preventDefault(); const files = byId('files').files;
       if (!files.length) return setMessage('upload-message', '请先选择至少一份文档。', true);
       const button = byId('upload-button'); button.disabled = true; button.textContent = '正在建立索引…'; setMessage('upload-message', '正在解析、切分并生成向量，请稍候。');
-      const form = new FormData(); [...files].forEach(file => form.append('files', file));
+      const form = new FormData(); [...files].forEach(file => form.append('files', file)); form.append('department', byId('upload-department').value.trim() || '未分类'); form.append('document_type', byId('upload-type').value.trim() || '其他'); form.append('classification', byId('upload-classification').value); form.append('effective_date', byId('upload-effective-date').value.trim() || '未标注'); form.append('tags', byId('upload-tags').value.trim());
       try { const response = await fetch(`${api}/documents`, { method:'POST', body:form }); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); setMessage('upload-message', `上传成功：新增 ${data.chunks_added} 个文本块。`); byId('files').value = ''; byId('file-list').textContent = '尚未选择文件'; await refreshStatus(); }
       catch (error) { setMessage('upload-message', error.message, true); }
       finally { button.disabled = false; button.textContent = '上传并建立索引'; }
@@ -194,7 +201,7 @@
     byId('chat-form').addEventListener('submit', async event => {
       event.preventDefault(); const question = byId('question').value.trim(); if (!question) return;
       const button = byId('chat-button'); button.disabled = true; button.textContent = '正在检索并生成…'; setMessage('chat-message', '正在检索相关资料并生成回答。');
-      try { const response = await fetch(`${api}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({question, top_k:5}) }); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); byId('answer-text').textContent = data.answer; const list = byId('citations'); list.replaceChildren(); data.citations.forEach(item => { const node = document.createElement('details'); node.className = 'citation'; node.innerHTML = `<summary><b></b><span></span></summary><p></p>`; node.querySelector('b').textContent = item.source; node.querySelector('span').textContent = ` · ${item.location} · 相关性 ${item.score}`; node.querySelector('p').textContent = item.excerpt; list.append(node); }); byId('answer').classList.add('visible'); setMessage('chat-message', data.citations.length ? `已返回 ${data.citations.length} 条高相关引用。` : '未找到可引用资料。'); await refreshMonitoring(); }
+      try { const department=byId('filter-department').value || null, document_type=byId('filter-type').value || null, tag=byId('filter-tag').value.trim() || null; const response = await fetch(`${api}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({question, top_k:5, department, document_type, tag}) }); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); byId('answer-text').textContent = data.answer; const list = byId('citations'); list.replaceChildren(); data.citations.forEach(item => { const node = document.createElement('details'); node.className = 'citation'; node.innerHTML = `<summary><b></b><span></span></summary><p></p>`; node.querySelector('b').textContent = item.source; node.querySelector('span').textContent = ` · ${item.department} / ${item.document_type} · ${item.classification} · 相关性 ${item.score}`; node.querySelector('p').textContent = item.excerpt; list.append(node); }); byId('answer').classList.add('visible'); setMessage('chat-message', data.citations.length ? `已返回 ${data.citations.length} 条高相关引用。` : '未找到可引用资料。'); await refreshMonitoring(); }
       catch (error) { setMessage('chat-message', error.message, true); }
       finally { button.disabled = false; button.textContent = '获取答案'; }
     });

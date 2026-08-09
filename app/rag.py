@@ -6,6 +6,7 @@ from .config import Settings
 from .documents import SourceDocument
 from .embeddings import BGEEmbedder
 from .llm import LocalQwenGenerator
+from .metadata import matches_metadata
 from .reranker import LocalReranker
 from .schemas import ChatResponse, Citation
 from .vector_store import FaissKnowledgeBase, RetrievedChunk
@@ -43,11 +44,17 @@ class RagService:
             self.store.add(chunks, self.embedder.encode_documents([chunk.text for chunk in chunks]))
         return len(chunks)
 
-    def chat(self, question: str, top_k: int | None) -> ChatResponse:
-        response, _ = self.chat_with_trace(question, top_k)
+    def chat(
+        self, question: str, top_k: int | None, department: str | None = None,
+        document_type: str | None = None, tag: str | None = None,
+    ) -> ChatResponse:
+        response, _ = self.chat_with_trace(question, top_k, department, document_type, tag)
         return response
 
-    def chat_with_trace(self, question: str, top_k: int | None) -> tuple[ChatResponse, dict]:
+    def chat_with_trace(
+        self, question: str, top_k: int | None, department: str | None = None,
+        document_type: str | None = None, tag: str | None = None,
+    ) -> tuple[ChatResponse, dict]:
         chunk_count, _ = self.store.status()
         if chunk_count == 0:
             return (
@@ -58,7 +65,7 @@ class RagService:
                 {"candidate_count": 0},
             )
         retrieved, trace = self._retrieve_text_with_trace(
-            question, top_k or self.settings.default_top_k
+            question, top_k or self.settings.default_top_k, department, document_type, tag
         )
         if not retrieved:
             return (
@@ -117,12 +124,16 @@ class RagService:
     def image_status(self) -> tuple[int, int | None]:
         return self.image_store.status()
 
-    def retrieve_text(self, question: str, top_k: int) -> list[RetrievedChunk]:
-        retrieved, _ = self._retrieve_text_with_trace(question, top_k)
+    def retrieve_text(
+        self, question: str, top_k: int, department: str | None = None,
+        document_type: str | None = None, tag: str | None = None,
+    ) -> list[RetrievedChunk]:
+        retrieved, _ = self._retrieve_text_with_trace(question, top_k, department, document_type, tag)
         return retrieved
 
     def _retrieve_text_with_trace(
-        self, question: str, top_k: int
+        self, question: str, top_k: int, department: str | None = None,
+        document_type: str | None = None, tag: str | None = None,
     ) -> tuple[list[RetrievedChunk], dict]:
         dense_candidates = self.store.search(
             self.embedder.encode_query(question), max(top_k * 4, 12)
@@ -136,12 +147,16 @@ class RagService:
         candidates_by_id = {chunk.chunk_id: chunk for chunk in dense_candidates}
         for chunk in lexical_candidates:
             candidates_by_id.setdefault(chunk.chunk_id, chunk)
-        candidates = list(candidates_by_id.values())
+        candidates = [
+            chunk for chunk in candidates_by_id.values()
+            if matches_metadata(chunk.__dict__, department, document_type, tag)
+        ]
         if not candidates:
             return [], {
                 "candidate_count": 0,
                 "dense_candidate_count": len(dense_candidates),
                 "lexical_candidate_count": len(lexical_candidates),
+                "filters": {"department": department, "document_type": document_type, "tag": tag},
             }
         rerank_scores = self.reranker.rerank(question, [chunk.text for chunk in candidates])
         ranked = sorted(zip(candidates, rerank_scores), key=lambda item: item[1], reverse=True)
@@ -159,6 +174,7 @@ class RagService:
             "candidate_count": len(candidates),
             "dense_candidate_count": len(dense_candidates),
             "lexical_candidate_count": len(lexical_candidates),
+            "filters": {"department": department, "document_type": document_type, "tag": tag},
             "reranked_candidates": [
                 {"source": chunk.source_name, "score": round(float(score), 4)}
                 for chunk, score in ranked[: min(len(ranked), 12)]
@@ -233,7 +249,11 @@ class RagService:
         parts: list[str] = []
         used = 0
         for number, chunk in enumerate(chunks, start=1):
-            part = f"[{number}] 来源：{chunk.source_name}，{chunk.location}\n{chunk.text}\n"
+            part = (
+                f"[{number}] 来源：{chunk.source_name}，{chunk.location}"
+                f"（部门：{chunk.department}；类型：{chunk.document_type}；密级：{chunk.classification}）\n"
+                f"{chunk.text}\n"
+            )
             if used + len(part) > self.settings.max_context_chars:
                 break
             parts.append(part)
@@ -249,4 +269,9 @@ class RagService:
             location=chunk.location,
             score=round(chunk.score, 4),
             excerpt=excerpt,
+            department=chunk.department,
+            document_type=chunk.document_type,
+            classification=chunk.classification,
+            effective_date=chunk.effective_date,
+            tags=chunk.tags or [],
         )

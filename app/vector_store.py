@@ -9,6 +9,7 @@ import faiss
 import numpy as np
 
 from .chunking import Chunk
+from .metadata import normalize_metadata
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,11 @@ class RetrievedChunk:
     location: str
     text: str
     score: float
+    department: str = "未分类"
+    document_type: str = "其他"
+    classification: str = "内部"
+    effective_date: str = "未标注"
+    tags: list[str] | None = None
 
 
 class FaissKnowledgeBase:
@@ -37,6 +43,15 @@ class FaissKnowledgeBase:
             self._records = json.loads(self.records_path.read_text(encoding="utf-8"))
             if self._index.ntotal != len(self._records):
                 raise RuntimeError("FAISS 索引与文本块数量不一致，请先清空知识库后重新导入。")
+            migrated = False
+            for record in self._records:
+                metadata = normalize_metadata(record, record["source_name"])
+                for key, value in metadata.items():
+                    if record.get(key) != value:
+                        record[key] = value
+                        migrated = True
+            if migrated:
+                self._persist()
 
     def add(self, chunks: list[Chunk], vectors: np.ndarray) -> None:
         if not chunks:
@@ -72,10 +87,15 @@ class FaissKnowledgeBase:
         with self._lock:
             return len(self._records), self._index.d if self._index is not None else None
 
-    def list_sources(self) -> list[tuple[str, int]]:
+    def list_sources(self) -> list[dict]:
         with self._lock:
             counts = Counter(record["source_name"] for record in self._records)
-            return sorted(counts.items(), key=lambda item: item[0].lower())
+            sources = []
+            for source_name, chunks in counts.items():
+                record = next(record for record in self._records if record["source_name"] == source_name)
+                metadata = normalize_metadata(record, source_name)
+                sources.append({"source_name": source_name, "chunks": chunks, **metadata})
+            return sorted(sources, key=lambda item: item["source_name"].lower())
 
     def delete_source(self, source_name: str) -> int:
         with self._lock:

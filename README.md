@@ -31,6 +31,7 @@ flowchart LR
 - 使用界面：上传、提问、引用展开、文档列表、单文档删除和清空知识库确认。
 - 检索评估：以题目—预期来源映射验证真实的“召回 → 精排”链路。
 - 可观测性：本地记录问题摘要、Agent 路由、候选数量、实际引用和端到端耗时；网页展示近期调用与汇总指标。
+- 元数据检索：文档带有部门、类型、密级、生效日期和标签；问答支持按部门、类型和标签进行筛选后再执行混合召回与精排。
 
 ## 本项目服务器运行方式
 
@@ -63,6 +64,7 @@ ssh -N -L 8010:127.0.0.1:8010 my-ai-server
 - `GET /api/v1/documents`：列出已上传文档与文本块数。
 - `DELETE /api/v1/documents/{source_name}`：删除一个文档的全部文本块并重建索引。
 - `POST /api/v1/chat`：提交 `{"question": "...", "top_k": 5}`。
+- `POST /api/v1/chat`：可附加 `department`、`document_type`、`tag`，将检索范围限定到匹配的文档元数据。
 - `GET /api/v1/knowledge-base`：查看索引状态。
 - `DELETE /api/v1/knowledge-base`：清空索引。
 - `GET /api/v1/observability/summary`：获取近期请求、引用/拒答数量和平均耗时。
@@ -84,6 +86,8 @@ cd /home/cjy/project/multimodal-rag-assistant
 本次演示语料的验证结果：18 道有依据问题在阈值 `0.50` 下均将预期来源召回至 Top-3；4 道知识库未覆盖的问题均在端到端问答中被拒答且不显示无关引用。离线评估默认在 CPU 运行，避免与常驻 Qwen 争抢显存。
 
 运行评测后，脚本会把结构化结果写入 `data/evaluation_report.json`，网页“评测与可观测性”面板会自动展示 Pass@K 和 MRR。查询事件只保存在服务器本地 `data/query_events.jsonl`，默认最多保留 500 条；不会记录文档原文或完整回答。
+
+上传新文档时可在网页填写部门、文档类型、标签、密级和生效日期。元数据随每个文本块持久化到 FAISS 的同一份记录中；它不是权限认证机制，生产环境仍应在 API 网关或身份系统中实施真实的访问控制。
 
 ## 阶段 2：多模态检索与 Agent（已完成）
 

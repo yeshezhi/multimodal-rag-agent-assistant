@@ -51,7 +51,13 @@ def main() -> None:
     reciprocal_ranks: list[float] = []
     details = []
     for case in cases:
-        retrieved = service.retrieve_text(case["question"], args.top_k)
+        retrieved = service.retrieve_text(
+            case["question"],
+            args.top_k,
+            case.get("department"),
+            case.get("document_type"),
+            case.get("tag"),
+        )
         sources = [item.source_name for item in retrieved]
         ranked = [
             {"source": item.source_name, "score": round(item.score, 4)}
@@ -69,6 +75,11 @@ def main() -> None:
         detail = {
             "question": case["question"],
             "expected": expected_source,
+            "filters": {
+                "department": case.get("department"),
+                "document_type": case.get("document_type"),
+                "tag": case.get("tag"),
+            },
             "accepted_sources": sources,
             "ranked_sources": ranked,
             "rank": rank,
