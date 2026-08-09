@@ -1,0 +1,13 @@
+services:
+  app:
+    environment:
+      EMBEDDING_DEVICE: cuda
+      QWEN_DEVICE: cuda
+      VISION_DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

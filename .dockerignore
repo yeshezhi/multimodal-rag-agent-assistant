@@ -1,0 +1,11 @@
+.git
+.venv
+__pycache__
+*.py[cod]
+.env
+.env.server
+data
+logs
+models
+outputs
+demo_documents

@@ -1,0 +1,94 @@
+name: multimodal-rag-agent
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd
+    volumes:
+      - etcd-data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    command: minio server /minio_data
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - minio-data:/minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  milvus:
+    image: milvusdb/milvus:v2.4.9
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvus-data:/var/lib/milvus
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  app:
+    build: .
+    env_file: .env.docker
+    environment:
+      RAG_DATA_DIR: /app/data
+      VECTOR_BACKEND: milvus
+      MILVUS_URI: http://milvus:19530
+    volumes:
+      - ./data:/app/data
+      - ${BGE_HOST_PATH}:/models/bge-m3:ro
+      - ${RERANKER_HOST_PATH}:/models/bge-reranker-v2-m3:ro
+      - ${QWEN_HOST_PATH}:/models/qwen:ro
+      - ${DINO_HOST_PATH}:/models/dino:ro
+      - ${SAMPLE4GEO_HOST_PATH}:/opt/sample4geo:ro
+    depends_on:
+      milvus:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:8011:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  migrate:
+    build: .
+    profiles: ["tools"]
+    env_file: .env.docker
+    environment:
+      RAG_DATA_DIR: /app/data
+      MILVUS_URI: http://milvus:19530
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      milvus:
+        condition: service_healthy
+    command: ["python", "scripts/migrate_faiss_to_milvus.py", "--replace"]
+
+volumes:
+  etcd-data:
+  minio-data:
+  milvus-data:

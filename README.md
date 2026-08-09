@@ -58,6 +58,10 @@ ssh -N -L 8010:127.0.0.1:8010 my-ai-server
 
 随后打开 `http://127.0.0.1:8010/`。推荐使用该网页，而非 Swagger 的上传表单。
 
+## 容器化部署
+
+仓库提供 `Dockerfile`、`docker-compose.yml`、Milvus 迁移工具和 Nginx 反向代理。完整步骤见 [Docker 部署文档](docs/docker-deployment.md)。默认部署端口为服务器回环地址 `8011`，并保留 GPU 覆盖文件供安装 NVIDIA Container Toolkit 后启用。
+
 ## API
 
 - `POST /api/v1/documents`：上传一个或多个文档。

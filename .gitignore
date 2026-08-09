@@ -1,6 +1,7 @@
 .venv/
 .env
 .env.server
+.env.docker
 __pycache__/
 *.py[cod]
 data/

@@ -83,6 +83,13 @@ class FaissKnowledgeBase:
         with self._lock:
             return [RetrievedChunk(score=0.0, **record) for record in self._records]
 
+    def export_records_and_vectors(self) -> tuple[list[dict], np.ndarray]:
+        """Export the current local index for a one-off Milvus migration."""
+        with self._lock:
+            if self._index is None:
+                return [], np.empty((0, 0), dtype=np.float32)
+            return list(self._records), self._index.reconstruct_n(0, self._index.ntotal)
+
     def status(self) -> tuple[int, int | None]:
         with self._lock:
             return len(self._records), self._index.d if self._index is not None else None

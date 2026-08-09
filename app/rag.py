@@ -28,7 +28,16 @@ class RagService:
         self.chunker = ChineseTextChunker()
         self.embedder = BGEEmbedder(settings.embedding_model, settings.embedding_device)
         self.reranker = LocalReranker(settings.reranker_model, settings.reranker_device)
-        self.store = FaissKnowledgeBase(settings.rag_data_dir)
+        if settings.vector_backend.lower() == "milvus":
+            from .milvus_store import MilvusKnowledgeBase
+
+            self.store = MilvusKnowledgeBase(
+                settings.milvus_uri, settings.milvus_collection, settings.embedding_dimension
+            )
+        elif settings.vector_backend.lower() == "faiss":
+            self.store = FaissKnowledgeBase(settings.rag_data_dir)
+        else:
+            raise ValueError("VECTOR_BACKEND 仅支持 faiss 或 milvus。")
         self.image_store = ImageFaissStore(settings.rag_data_dir)
         self.vision_embedder = DinoVisionEmbedder(
             settings.vision_repo_path,

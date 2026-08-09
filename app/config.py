@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=PROJECT_DIR / ".env", extra="ignore")
 
     rag_data_dir: Path = PROJECT_DIR / "data"
+    vector_backend: str = "faiss"
+    milvus_uri: str = "http://milvus:19530"
+    milvus_collection: str = "enterprise_knowledge_chunks"
+    embedding_dimension: int = 1024
     embedding_model: str = "BAAI/bge-m3"
     embedding_device: str = "cuda"
     reranker_model: str = str(PROJECT_DIR / "models" / "bge-reranker-v2-m3")
