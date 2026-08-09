@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
@@ -9,6 +10,7 @@ from fastapi.responses import FileResponse
 from .config import get_settings
 from .agent import EnterpriseAgent
 from .documents import parse_document
+from .observability import ObservabilityStore, load_evaluation_report
 from .rag import RagService
 from .schemas import (
     ChatRequest,
@@ -17,6 +19,7 @@ from .schemas import (
     AgentResponse,
     DocumentListResponse,
     DocumentSummary,
+    EvaluationSummary,
     ImageIngestResponse,
     ImageKnowledgeBaseStatus,
     ImageSearchResponse,
@@ -25,6 +28,7 @@ from .schemas import (
     KnowledgeBaseStatus,
     MultimodalImageResponse,
     MultimodalRagResponse,
+    ObservabilitySummary,
 )
 
 
@@ -73,6 +77,11 @@ def get_service() -> RagService:
 @lru_cache
 def get_agent() -> EnterpriseAgent:
     return EnterpriseAgent(get_service())
+
+
+@lru_cache
+def get_observability() -> ObservabilityStore:
+    return ObservabilityStore(get_settings().rag_data_dir)
 
 
 @app.get("/health")
@@ -200,16 +209,40 @@ async def multimodal_rag_query(
 
 @app.post("/api/v1/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
+    started_at = perf_counter()
     try:
-        return get_service().chat(request.question, request.top_k)
+        response, trace = get_service().chat_with_trace(request.question, request.top_k)
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    get_observability().record(
+        {
+            "route": "knowledge_base",
+            "question": request.question.strip()[:300],
+            "latency_ms": round((perf_counter() - started_at) * 1000, 1),
+            "outcome": "answered" if response.citations else "refused",
+            "candidate_count": trace.get("candidate_count", 0),
+            "citations": [item.source for item in response.citations],
+        }
+    )
+    return response
 
 
 @app.post("/api/v1/agent", response_model=AgentResponse)
 def agent(request: AgentRequest) -> AgentResponse:
+    started_at = perf_counter()
     result = get_agent().invoke(request.question)
-    return AgentResponse(route=result["route"], answer=result["answer"])
+    response = AgentResponse(route=result["route"], answer=result["answer"])
+    get_observability().record(
+        {
+            "route": f"agent:{response.route}",
+            "question": request.question.strip()[:300],
+            "latency_ms": round((perf_counter() - started_at) * 1000, 1),
+            "outcome": "refused" if "无法确定" in response.answer else "answered",
+            "candidate_count": 0,
+            "citations": [],
+        }
+    )
+    return response
 
 
 @app.post("/api/v1/agent/image", response_model=MultimodalRagResponse)
@@ -249,3 +282,16 @@ def delete_document(source_name: str) -> None:
 @app.delete("/api/v1/knowledge-base", status_code=status.HTTP_204_NO_CONTENT)
 def clear_knowledge_base() -> None:
     get_service().store.clear()
+
+
+@app.get("/api/v1/observability/summary", response_model=ObservabilitySummary)
+def observability_summary() -> ObservabilitySummary:
+    return ObservabilitySummary(**get_observability().summary())
+
+
+@app.get("/api/v1/evaluation/summary", response_model=EvaluationSummary)
+def evaluation_summary() -> EvaluationSummary:
+    report = load_evaluation_report(get_settings().rag_data_dir)
+    if report is None:
+        return EvaluationSummary(available=False)
+    return EvaluationSummary(available=True, **report)

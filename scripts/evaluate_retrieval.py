@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Allow running this script directly from the project root without installing it
@@ -23,6 +24,11 @@ def main() -> None:
         help="Embedding device for offline evaluation (default: cpu to avoid competing with Qwen).",
     )
     parser.add_argument(
+        "--report-path",
+        default=None,
+        help="Path for the JSON summary consumed by the monitoring page.",
+    )
+    parser.add_argument(
         "--min-score",
         type=float,
         default=None,
@@ -42,6 +48,8 @@ def main() -> None:
     service = RagService(settings)
 
     passed = 0
+    reciprocal_ranks: list[float] = []
+    details = []
     for case in cases:
         retrieved = service.retrieve_text(case["question"], args.top_k)
         sources = [item.source_name for item in retrieved]
@@ -51,23 +59,36 @@ def main() -> None:
         ]
         expected_source = case.get("expected_source")
         hit = not sources if expected_source is None else expected_source in sources
-        passed += int(hit)
-        print(
-            json.dumps(
-                {
-                    "question": case["question"],
-                    "expected": expected_source,
-                    "accepted_sources": sources,
-                    "ranked_sources": ranked,
-                    "hit": hit,
-                },
-                ensure_ascii=False,
-            )
+        rank = (
+            sources.index(expected_source) + 1
+            if expected_source is not None and expected_source in sources
+            else None
         )
-    print(
-        f"Hybrid Recall + Rerank Pass@{args.top_k}: "
-        f"{passed}/{len(cases)} = {passed / len(cases):.1%}"
-    )
+        passed += int(hit)
+        reciprocal_ranks.append(1 / rank if rank else 0)
+        detail = {
+            "question": case["question"],
+            "expected": expected_source,
+            "accepted_sources": sources,
+            "ranked_sources": ranked,
+            "rank": rank,
+            "hit": hit,
+        }
+        details.append(detail)
+        print(json.dumps(detail, ensure_ascii=False))
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "top_k": args.top_k,
+        "total_cases": len(cases),
+        "passed": passed,
+        "pass_at_k": round(passed / len(cases), 4) if cases else 0,
+        "mrr": round(sum(reciprocal_ranks) / len(cases), 4) if cases else 0,
+        "details": details,
+    }
+    report_path = Path(args.report_path) if args.report_path else settings.rag_data_dir / "evaluation_report.json"
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Hybrid Recall + Rerank Pass@{args.top_k}: {passed}/{len(cases)} = {passed / len(cases):.1%}")
+    print(f"MRR: {report['mrr']:.4f}; report: {report_path}")
 
 
 if __name__ == "__main__":

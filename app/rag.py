@@ -44,17 +44,29 @@ class RagService:
         return len(chunks)
 
     def chat(self, question: str, top_k: int | None) -> ChatResponse:
+        response, _ = self.chat_with_trace(question, top_k)
+        return response
+
+    def chat_with_trace(self, question: str, top_k: int | None) -> tuple[ChatResponse, dict]:
         chunk_count, _ = self.store.status()
         if chunk_count == 0:
-            return ChatResponse(
-                answer="根据当前知识库资料，无法确定。请先上传相关文档。",
-                citations=[],
+            return (
+                ChatResponse(
+                    answer="根据当前知识库资料，无法确定。请先上传相关文档。",
+                    citations=[],
+                ),
+                {"candidate_count": 0},
             )
-        retrieved = self.retrieve_text(question, top_k or self.settings.default_top_k)
+        retrieved, trace = self._retrieve_text_with_trace(
+            question, top_k or self.settings.default_top_k
+        )
         if not retrieved:
-            return ChatResponse(
-                answer="根据当前知识库资料，无法确定。请先上传相关文档。",
-                citations=[],
+            return (
+                ChatResponse(
+                    answer="根据当前知识库资料，无法确定。请先上传相关文档。",
+                    citations=[],
+                ),
+                trace,
             )
         context = self._build_context(retrieved)
         answer = self.generator.generate(SYSTEM_PROMPT, f"检索资料：\n{context}\n\n用户问题：{question}")
@@ -63,16 +75,19 @@ class RagService:
             # determines that it does not support an answer, do not present the
             # unrelated retrieval as evidence in the UI.
             answer = re.sub(r"\s*\[\d+\]", "", answer).strip()
-            return ChatResponse(answer=answer, citations=[])
+            return ChatResponse(answer=answer, citations=[]), trace
         cited_numbers = {int(number) for number in re.findall(r"\[(\d+)\]", answer)}
         cited_chunks = [
             chunk
             for number, chunk in enumerate(retrieved, start=1)
             if number in cited_numbers
         ]
-        return ChatResponse(
-            answer=answer,
-            citations=[self._citation(chunk) for chunk in cited_chunks],
+        return (
+            ChatResponse(
+                answer=answer,
+                citations=[self._citation(chunk) for chunk in cited_chunks],
+            ),
+            trace,
         )
 
     def status(self) -> tuple[int, int | None]:
@@ -103,6 +118,12 @@ class RagService:
         return self.image_store.status()
 
     def retrieve_text(self, question: str, top_k: int) -> list[RetrievedChunk]:
+        retrieved, _ = self._retrieve_text_with_trace(question, top_k)
+        return retrieved
+
+    def _retrieve_text_with_trace(
+        self, question: str, top_k: int
+    ) -> tuple[list[RetrievedChunk], dict]:
         dense_candidates = self.store.search(
             self.embedder.encode_query(question), max(top_k * 4, 12)
         )
@@ -113,13 +134,18 @@ class RagService:
         ]
         lexical_candidates = self._keyword_retrieve(question, max(top_k * 4, 12))
         candidates_by_id = {chunk.chunk_id: chunk for chunk in dense_candidates}
-        candidates_by_id.update({chunk.chunk_id: chunk for chunk in lexical_candidates})
+        for chunk in lexical_candidates:
+            candidates_by_id.setdefault(chunk.chunk_id, chunk)
         candidates = list(candidates_by_id.values())
         if not candidates:
-            return []
+            return [], {
+                "candidate_count": 0,
+                "dense_candidate_count": len(dense_candidates),
+                "lexical_candidate_count": len(lexical_candidates),
+            }
         rerank_scores = self.reranker.rerank(question, [chunk.text for chunk in candidates])
         ranked = sorted(zip(candidates, rerank_scores), key=lambda item: item[1], reverse=True)
-        return [
+        retrieved = [
             RetrievedChunk(
                 chunk_id=chunk.chunk_id,
                 source_name=chunk.source_name,
@@ -129,6 +155,15 @@ class RagService:
             )
             for chunk, rerank_score in ranked[:top_k]
         ]
+        return retrieved, {
+            "candidate_count": len(candidates),
+            "dense_candidate_count": len(dense_candidates),
+            "lexical_candidate_count": len(lexical_candidates),
+            "reranked_candidates": [
+                {"source": chunk.source_name, "score": round(float(score), 4)}
+                for chunk, score in ranked[: min(len(ranked), 12)]
+            ],
+        }
 
     def _keyword_retrieve(self, question: str, top_k: int) -> list[RetrievedChunk]:
         """A small lexical fallback keeps exact policy terms from being missed.

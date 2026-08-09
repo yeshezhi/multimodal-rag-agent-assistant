@@ -77,3 +77,31 @@ class AgentRequest(BaseModel):
 class AgentResponse(BaseModel):
     route: str
     answer: str
+
+
+class QueryEvent(BaseModel):
+    timestamp: str
+    route: str
+    question: str
+    latency_ms: float
+    outcome: str
+    candidate_count: int = 0
+    citations: list[str] = Field(default_factory=list)
+
+
+class ObservabilitySummary(BaseModel):
+    total_queries: int
+    answered_queries: int
+    refused_queries: int
+    average_latency_ms: float | None
+    recent: list[QueryEvent]
+
+
+class EvaluationSummary(BaseModel):
+    available: bool
+    generated_at: str | None = None
+    top_k: int | None = None
+    total_cases: int | None = None
+    passed: int | None = None
+    pass_at_k: float | None = None
+    mrr: float | None = None

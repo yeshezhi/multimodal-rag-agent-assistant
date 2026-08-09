@@ -61,7 +61,8 @@
     .citation summary::after { content:'展开原文'; float:right; color:var(--blue); font-size:12px; } .citation[open] summary::after { content:'收起原文'; }
     .citation b { font-size:13px; } .citation span { color:var(--muted); font-size:12px; }
     .citation p { margin:7px 0 0; color:#475467; font-size:13px; line-height:1.55; }
-    @media (max-width:760px) { main { width:min(100% - 24px,1060px); padding-top:32px; } header { align-items:flex-start; flex-direction:column; gap:12px; } .grid { grid-template-columns:1fr; } .chat { grid-row:auto; } .vision-grid { grid-template-columns:1fr; } section { padding:20px; } }
+    .monitoring { grid-column:1 / -1; } .monitor-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:16px 0; } .metric { padding:14px; border:1px solid #e3eaf5; border-radius:12px; background:#fafcff; } .metric b { display:block; margin-bottom:5px; color:var(--blue); font-size:24px; letter-spacing:-.04em; } .metric span { color:var(--muted); font-size:12px; } .event-list { display:grid; gap:7px; } .event-row { display:grid; grid-template-columns:110px minmax(0,1fr) 94px 86px; gap:12px; align-items:center; padding:10px 0; border-top:1px solid #eef2f7; font-size:13px; } .event-row b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .event-row span { color:var(--muted); font-size:12px; } .event-row .event-ok { color:#087350; } .event-row .event-refused { color:#a15c00; } .evaluation-note { margin:12px 0 0; padding:11px; border-radius:10px; background:var(--soft-blue); color:#314a71; font-size:13px; line-height:1.55; }
+    @media (max-width:760px) { main { width:min(100% - 24px,1060px); padding-top:32px; } header { align-items:flex-start; flex-direction:column; gap:12px; } .grid { grid-template-columns:1fr; } .chat { grid-row:auto; } .vision-grid,.monitor-grid { grid-template-columns:1fr; } .event-row { grid-template-columns:1fr; gap:3px; } section { padding:20px; } }
   </style>
 </head>
 <body>
@@ -94,6 +95,12 @@
       </section>
       <section class="kb"><div class="kb-number" id="chunk-count">—</div><div class="kb-label">已索引文本块<br><span id="dimension"></span></div></section>
       <section class="sources"><div class="section-head"><h2>已上传文档</h2><button id="clear-button" class="text-button" type="button">清空知识库</button></div><div id="source-list" class="source-list"></div></section>
+      <section class="monitoring">
+        <div class="section-head"><div><h2>评测与可观测性</h2><p class="hint">记录问题摘要、实际引用与耗时；不记录文档原文或完整回答。</p></div><button id="monitor-refresh-button" class="text-button" type="button">刷新数据</button></div>
+        <div class="monitor-grid"><div class="metric"><b id="metric-total">—</b><span>累计请求</span></div><div class="metric"><b id="metric-answered">—</b><span>成功完成</span></div><div class="metric"><b id="metric-refused">—</b><span>拒答次数</span></div><div class="metric"><b id="metric-latency">—</b><span>平均响应耗时</span></div></div>
+        <div id="evaluation-note" class="evaluation-note">尚未生成离线评测报告。</div>
+        <div id="event-list" class="event-list"><div class="empty-sources">暂无查询日志。</div></div>
+      </section>
       <section class="vision"><h2>Agent 工具调用</h2><p class="hint">输入 GPU 状态或企业知识问题，Agent 会自动选择 gpu_status 或知识库检索工具。</p><textarea id="agent-question" class="multimodal-question" placeholder="例如：查询服务器 GPU 当前状态"></textarea><button id="agent-button" type="button">让 Agent 执行</button><div class="message" id="agent-message"></div><div class="multimodal-answer" id="agent-answer"></div></section>
       <section class="vision">
         <h2>视觉相似检索（DINOv3）</h2>
@@ -139,7 +146,7 @@
     function renderDocuments(documents) {
       const list = byId('source-list'); list.replaceChildren();
       if (!documents.length) { const empty = document.createElement('div'); empty.className = 'empty-sources'; empty.textContent = '尚未上传文档'; list.append(empty); return; }
-      documents.forEach(document => { const row = document.createElement('div'); row.className = 'source-row'; const name = document.createElement('div'); name.className = 'source-name'; name.title = document.source_name; name.textContent = document.source_name; const meta = document.createElement('div'); meta.className = 'source-meta'; meta.textContent = `${document.chunks} 个文本块`; const remove = document.createElement('button'); remove.className = 'remove-button'; remove.type = 'button'; remove.textContent = '删除'; remove.addEventListener('click', async () => { if (!confirm(`确认删除《${document.source_name}》及其全部索引吗？`)) return; const response = await fetch(`${api}/documents/${encodeURIComponent(document.source_name)}`, {method:'DELETE'}); if (!response.ok) return setMessage('upload-message', await readError(response), true); setMessage('upload-message', `已删除《${document.source_name}》。`); await refreshStatus(); }); row.append(name, meta, remove); list.append(row); });
+      documents.forEach(sourceDocument => { const row = document.createElement('div'); row.className = 'source-row'; const name = document.createElement('div'); name.className = 'source-name'; name.title = sourceDocument.source_name; name.textContent = sourceDocument.source_name; const meta = document.createElement('div'); meta.className = 'source-meta'; meta.textContent = `${sourceDocument.chunks} 个文本块`; const remove = document.createElement('button'); remove.className = 'remove-button'; remove.type = 'button'; remove.textContent = '删除'; remove.addEventListener('click', async () => { if (!confirm(`确认删除《${sourceDocument.source_name}》及其全部索引吗？`)) return; const response = await fetch(`${api}/documents/${encodeURIComponent(sourceDocument.source_name)}`, {method:'DELETE'}); if (!response.ok) return setMessage('upload-message', await readError(response), true); setMessage('upload-message', `已删除《${sourceDocument.source_name}》。`); await refreshStatus(); }); row.append(name, meta, remove); list.append(row); });
     }
     async function refreshStatus() {
       try {
@@ -151,10 +158,25 @@
         byId('connection-status').textContent = '知识库连接正常';
       } catch { byId('connection-status').textContent = '无法连接知识库'; }
       await refreshImageStatus();
+      await refreshMonitoring();
     }
     async function refreshImageStatus() {
       try { const response = await fetch(`${api}/image-knowledge-base`); const data = await response.json(); byId('image-index-status').textContent = data.images ? `当前已索引 ${data.images} 张参考图片 · ${data.vector_dimension} 维视觉向量` : '尚未建立视觉参考图库。'; }
       catch { byId('image-index-status').textContent = '无法读取视觉图库状态。'; }
+    }
+    function renderEvents(events) {
+      const list = byId('event-list'); list.replaceChildren();
+      if (!events.length) { const empty = document.createElement('div'); empty.className = 'empty-sources'; empty.textContent = '暂无查询日志。'; list.append(empty); return; }
+      events.forEach(event => { const row = document.createElement('div'); row.className = 'event-row'; const route = document.createElement('span'); route.textContent = event.route; const question = document.createElement('b'); question.title = event.question; question.textContent = event.question; const outcome = document.createElement('span'); outcome.className = event.outcome === 'answered' ? 'event-ok' : 'event-refused'; outcome.textContent = event.outcome === 'answered' ? `已引用 ${event.citations.length} 项` : '拒答'; const meta = document.createElement('span'); meta.textContent = `${(event.latency_ms / 1000).toFixed(1)} 秒`; row.append(route, question, outcome, meta); list.append(row); });
+    }
+    async function refreshMonitoring() {
+      try {
+        const [observabilityResponse, evaluationResponse] = await Promise.all([fetch(`${api}/observability/summary`), fetch(`${api}/evaluation/summary`)]);
+        if (!observabilityResponse.ok || !evaluationResponse.ok) throw new Error('监控接口不可用');
+        const data = await observabilityResponse.json(), evaluation = await evaluationResponse.json();
+        byId('metric-total').textContent = data.total_queries; byId('metric-answered').textContent = data.answered_queries; byId('metric-refused').textContent = data.refused_queries; byId('metric-latency').textContent = data.average_latency_ms == null ? '—' : `${(data.average_latency_ms / 1000).toFixed(1)} 秒`; renderEvents(data.recent);
+        byId('evaluation-note').textContent = evaluation.available ? `离线评测：Pass@${evaluation.top_k} ${(evaluation.pass_at_k * 100).toFixed(1)}%（${evaluation.passed}/${evaluation.total_cases}） · MRR ${evaluation.mrr.toFixed(4)} · 最近生成于 ${new Date(evaluation.generated_at).toLocaleString('zh-CN')}` : '尚未生成离线评测报告。运行 scripts/evaluate_retrieval.py 后将在此处显示 Pass@K 与 MRR。';
+      } catch { byId('evaluation-note').textContent = '暂时无法读取监控或评测数据。'; }
     }
     byId('files').addEventListener('change', event => {
       const names = [...event.target.files].map(file => file.name);
@@ -172,7 +194,7 @@
     byId('chat-form').addEventListener('submit', async event => {
       event.preventDefault(); const question = byId('question').value.trim(); if (!question) return;
       const button = byId('chat-button'); button.disabled = true; button.textContent = '正在检索并生成…'; setMessage('chat-message', '正在检索相关资料并生成回答。');
-      try { const response = await fetch(`${api}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({question, top_k:5}) }); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); byId('answer-text').textContent = data.answer; const list = byId('citations'); list.replaceChildren(); data.citations.forEach(item => { const node = document.createElement('details'); node.className = 'citation'; node.innerHTML = `<summary><b></b><span></span></summary><p></p>`; node.querySelector('b').textContent = item.source; node.querySelector('span').textContent = ` · ${item.location} · 相似度 ${item.score}`; node.querySelector('p').textContent = item.excerpt; list.append(node); }); byId('answer').classList.add('visible'); setMessage('chat-message', data.citations.length ? `已返回 ${data.citations.length} 条高相关引用。` : '未找到可引用资料。'); }
+      try { const response = await fetch(`${api}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({question, top_k:5}) }); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); byId('answer-text').textContent = data.answer; const list = byId('citations'); list.replaceChildren(); data.citations.forEach(item => { const node = document.createElement('details'); node.className = 'citation'; node.innerHTML = `<summary><b></b><span></span></summary><p></p>`; node.querySelector('b').textContent = item.source; node.querySelector('span').textContent = ` · ${item.location} · 相关性 ${item.score}`; node.querySelector('p').textContent = item.excerpt; list.append(node); }); byId('answer').classList.add('visible'); setMessage('chat-message', data.citations.length ? `已返回 ${data.citations.length} 条高相关引用。` : '未找到可引用资料。'); await refreshMonitoring(); }
       catch (error) { setMessage('chat-message', error.message, true); }
       finally { button.disabled = false; button.textContent = '获取答案'; }
     });
@@ -211,7 +233,8 @@
       try { const response=await fetch(`${api}/agent/image`,{method:'POST',body:form}); if(!response.ok) throw new Error(await readError(response)); const data=await response.json(); const answer=byId('multimodal-rag-answer'); answer.textContent=`Agent 多模态回答：\n${data.answer}`; answer.classList.add('visible'); setMessage('image-search-message',`Agent 已完成图片理解、视觉检索与知识检索。`); }
       catch(error){setMessage('image-search-message',error.message,true);} finally {button.disabled=false;button.textContent='Agent 图片问答';}
     });
-    byId('agent-button').addEventListener('click', async () => { const question=byId('agent-question').value.trim(); if(!question) return setMessage('agent-message','请输入问题。',true); const button=byId('agent-button'); button.disabled=true; button.textContent='Agent 正在选择工具…'; try { const response=await fetch(`${api}/agent`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question})}); if(!response.ok) throw new Error(await readError(response)); const data=await response.json(); const answer=byId('agent-answer'); answer.textContent=`调用工具：${data.route}\n\n${data.answer}`; answer.classList.add('visible'); setMessage('agent-message','Agent 执行完成。'); } catch(error){setMessage('agent-message',error.message,true);} finally {button.disabled=false;button.textContent='让 Agent 执行';} });
+    byId('agent-button').addEventListener('click', async () => { const question=byId('agent-question').value.trim(); if(!question) return setMessage('agent-message','请输入问题。',true); const button=byId('agent-button'); button.disabled=true; button.textContent='Agent 正在选择工具…'; try { const response=await fetch(`${api}/agent`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question})}); if(!response.ok) throw new Error(await readError(response)); const data=await response.json(); const answer=byId('agent-answer'); answer.textContent=`调用工具：${data.route}\n\n${data.answer}`; answer.classList.add('visible'); setMessage('agent-message','Agent 执行完成。'); await refreshMonitoring(); } catch(error){setMessage('agent-message',error.message,true);} finally {button.disabled=false;button.textContent='让 Agent 执行';} });
+    byId('monitor-refresh-button').addEventListener('click', refreshMonitoring);
     refreshStatus();
   </script>
 </body>
