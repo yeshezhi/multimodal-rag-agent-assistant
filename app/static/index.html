@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>企业知识库 RAG</title>
+  <style>
+    :root { --ink:#172033; --muted:#667085; --line:#d9e1ee; --paper:#fff; --canvas:#f5f8fc; --blue:#2563eb; --blue-dark:#1d4ed8; --green:#0f9f6e; --soft-blue:#edf4ff; --soft-green:#edfbf5; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; color:var(--ink); background:var(--canvas); font-family:Inter,"Microsoft YaHei",system-ui,sans-serif; }
+    main { width:min(1060px,calc(100% - 32px)); margin:0 auto; padding:54px 0 72px; }
+    header { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:30px; }
+    h1 { margin:0; font-size:clamp(28px,4vw,42px); letter-spacing:-.04em; }
+    .sub { margin:10px 0 0; color:var(--muted); font-size:16px; }
+    .status { background:var(--soft-green); color:#087350; border:1px solid #b8ead6; border-radius:999px; padding:8px 12px; font-size:13px; white-space:nowrap; }
+    .grid { display:grid; grid-template-columns: .9fr 1.1fr; gap:22px; align-items:start; }
+    section { background:var(--paper); border:1px solid var(--line); border-radius:18px; padding:25px; box-shadow:0 12px 30px rgba(24,39,75,.06); }
+    .chat { grid-row:span 2; }
+    h2 { margin:0 0 8px; font-size:20px; letter-spacing:-.02em; }
+    .hint { margin:0 0 20px; color:var(--muted); font-size:14px; line-height:1.6; }
+    .dropzone { display:block; padding:27px 18px; border:1.5px dashed #9db5dd; border-radius:13px; background:var(--soft-blue); text-align:center; cursor:pointer; transition:.2s; }
+    .dropzone:hover { border-color:var(--blue); background:#e5efff; }
+    .dropzone strong { display:block; font-size:15px; margin-bottom:7px; }
+    .dropzone span { font-size:13px; color:var(--muted); }
+    input[type=file] { display:none; }
+    .file-list { min-height:24px; margin:14px 0; color:var(--muted); font-size:13px; line-height:1.7; }
+    button { width:100%; border:0; border-radius:10px; padding:12px 16px; background:var(--blue); color:#fff; font:inherit; font-weight:700; cursor:pointer; transition:.2s; }
+    button:hover:not(:disabled) { background:var(--blue-dark); }
+    button:disabled { opacity:.58; cursor:not-allowed; }
+    .message { min-height:22px; margin:12px 0 0; color:var(--muted); font-size:13px; line-height:1.55; }
+    .message.error { color:#b42318; }
+    .kb { display:flex; gap:13px; align-items:center; background:#fafcff; }
+    .kb-number { font-size:32px; font-weight:800; color:var(--blue); letter-spacing:-.06em; }
+    .kb-label { color:var(--muted); font-size:14px; }
+    .sources { padding:22px 25px; } .section-head { display:flex; justify-content:space-between; gap:15px; align-items:center; margin-bottom:10px; }
+    .vision { grid-column:1 / -1; } .vision-grid { display:grid; grid-template-columns:1fr 1fr; gap:22px; } .vision-panel { padding:18px; border:1px solid #e3eaf5; border-radius:13px; background:#fafcff; }
+    .vision-panel h3 { margin:0 0 7px; font-size:15px; } .image-results { display:grid; gap:8px; margin-top:13px; }
+    .image-result { display:flex; justify-content:space-between; gap:12px; padding:10px; border-radius:9px; background:#f7faff; border-left:3px solid #77a5ff; font-size:13px; }
+    .image-result span { color:var(--muted); white-space:nowrap; } .vision-status { color:var(--muted); font-size:13px; margin:0 0 17px; }
+    .image-result img { width:68px; height:48px; object-fit:cover; border-radius:6px; }
+    .secondary-button { margin-top:9px; background:#0f766e; } .secondary-button:hover:not(:disabled) { background:#0b5d57; }
+    .multimodal-answer { display:none; margin-top:13px; padding:11px; border-radius:9px; background:#edfbf5; border-left:3px solid #42b883; white-space:pre-wrap; color:#25443c; font-size:13px; line-height:1.6; }
+    .multimodal-answer.visible { display:block; }
+    .multimodal-question { width:100%; min-height:72px; margin-top:10px; padding:10px; border:1px solid var(--line); border-radius:10px; font:inherit; resize:vertical; }
+    .section-head h2 { margin:0; } .text-button { width:auto; padding:7px 10px; color:#b42318; background:#fff; border:1px solid #f7c8c5; font-size:12px; }
+    .text-button:hover:not(:disabled) { background:#fff0ef; color:#8d1e16; }
+    .source-list { display:grid; gap:8px; } .source-row { display:flex; gap:10px; align-items:center; padding:10px 0; border-top:1px solid #eef2f7; }
+    .source-row:first-child { border-top:0; } .source-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:650; }
+    .source-meta { color:var(--muted); font-size:12px; white-space:nowrap; } .remove-button { width:auto; padding:5px 8px; color:#b42318; background:transparent; border:1px solid #f7c8c5; font-size:12px; }
+    .remove-button:hover { background:#fff0ef; } .empty-sources { color:var(--muted); font-size:13px; padding:5px 0; }
+    textarea { width:100%; min-height:118px; resize:vertical; padding:13px; border:1px solid var(--line); border-radius:11px; color:var(--ink); font:inherit; line-height:1.55; outline:none; }
+    textarea:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+    .chat button { margin-top:12px; }
+    .answer { display:none; margin-top:22px; border-top:1px solid var(--line); padding-top:20px; }
+    .answer.visible { display:block; }
+    .answer h3 { margin:0 0 10px; font-size:15px; }
+    .answer-text { white-space:pre-wrap; line-height:1.75; font-size:15px; }
+    .citations { display:grid; gap:9px; margin-top:18px; }
+    .citation { padding:13px; border-left:3px solid #77a5ff; border-radius:0 9px 9px 0; background:#f7faff; }
+    .citation summary { cursor:pointer; list-style:none; } .citation summary::-webkit-details-marker { display:none; }
+    .citation summary::after { content:'展开原文'; float:right; color:var(--blue); font-size:12px; } .citation[open] summary::after { content:'收起原文'; }
+    .citation b { font-size:13px; } .citation span { color:var(--muted); font-size:12px; }
+    .citation p { margin:7px 0 0; color:#475467; font-size:13px; line-height:1.55; }
+    @media (max-width:760px) { main { width:min(100% - 24px,1060px); padding-top:32px; } header { align-items:flex-start; flex-direction:column; gap:12px; } .grid { grid-template-columns:1fr; } .chat { grid-row:auto; } .vision-grid { grid-template-columns:1fr; } section { padding:20px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><h1>企业知识库 RAG</h1><p class="sub">上传内部资料，获取基于来源引用的可靠回答。</p></div>
+      <div class="status" id="connection-status">正在连接知识库…</div>
+    </header>
+    <div class="grid">
+      <section>
+        <h2>导入知识</h2>
+        <p class="hint">支持 PDF、Word、Markdown 和 TXT；单个文件最大 25MB。</p>
+        <form id="upload-form">
+          <label class="dropzone" for="files"><strong>选择文档</strong><span>可一次选择多个文件</span></label>
+          <input id="files" name="files" type="file" multiple accept=".pdf,.docx,.md,.markdown,.txt">
+          <div class="file-list" id="file-list">尚未选择文件</div>
+          <button id="upload-button" type="submit">上传并建立索引</button>
+          <div class="message" id="upload-message"></div>
+        </form>
+      </section>
+      <section class="chat">
+        <h2>开始提问</h2>
+        <p class="hint">仅当检索内容达到相关性阈值时才生成回答；引用默认折叠，可按需展开。</p>
+        <form id="chat-form">
+          <textarea id="question" placeholder="例如：GPU 温度过高时应该如何处理？" required></textarea>
+          <button id="chat-button" type="submit">获取答案</button>
+          <div class="message" id="chat-message"></div>
+        </form>
+        <div class="answer" id="answer"><h3>回答</h3><div class="answer-text" id="answer-text"></div><div class="citations" id="citations"></div></div>
+      </section>
+      <section class="kb"><div class="kb-number" id="chunk-count">—</div><div class="kb-label">已索引文本块<br><span id="dimension"></span></div></section>
+      <section class="sources"><div class="section-head"><h2>已上传文档</h2><button id="clear-button" class="text-button" type="button">清空知识库</button></div><div id="source-list" class="source-list"></div></section>
+      <section class="vision"><h2>Agent 工具调用</h2><p class="hint">输入 GPU 状态或企业知识问题，Agent 会自动选择 gpu_status 或知识库检索工具。</p><textarea id="agent-question" class="multimodal-question" placeholder="例如：查询服务器 GPU 当前状态"></textarea><button id="agent-button" type="button">让 Agent 执行</button><div class="message" id="agent-message"></div><div class="multimodal-answer" id="agent-answer"></div></section>
+      <section class="vision">
+        <h2>视觉相似检索（DINOv3）</h2>
+        <p class="hint">先上传参考图片建立视觉图库，再上传一张查询图片。当前演示复用你的 University 跨视角检索模型，适合找视觉上对应或相似的地点图片。</p>
+        <p class="vision-status" id="image-index-status">正在读取视觉图库状态…</p>
+        <div class="vision-grid">
+          <div class="vision-panel">
+            <h3>1. 建立参考图库</h3>
+            <form id="image-index-form">
+              <label class="dropzone" for="image-files"><strong>选择参考图片</strong><span>支持 JPG、PNG、WEBP，可一次选择多张</span></label>
+              <input id="image-files" type="file" multiple accept="image/jpeg,image/png,image/webp">
+              <div class="file-list" id="image-file-list">尚未选择图片</div>
+              <button id="image-index-button" type="submit">上传并建立视觉索引</button>
+              <div class="message" id="image-index-message"></div>
+            </form>
+          </div>
+          <div class="vision-panel">
+            <h3>2. 以图搜图</h3>
+            <form id="image-search-form">
+              <label class="dropzone" for="query-image"><strong>选择查询图片</strong><span>系统将返回最相似的参考图片</span></label>
+              <input id="query-image" type="file" accept="image/jpeg,image/png,image/webp">
+              <div class="file-list" id="query-image-name">尚未选择图片</div>
+              <textarea id="multimodal-question" class="multimodal-question" placeholder="输入一个需要结合图片和知识库回答的问题，例如：图片中可见内容与哪些安全要求有关？"></textarea>
+              <button id="image-search-button" type="submit">查找相似图片</button>
+              <button id="multimodal-button" class="secondary-button" type="button">理解图片并检索</button>
+              <button id="multimodal-rag-button" class="secondary-button" type="button">多模态知识问答</button>
+              <button id="agent-image-button" class="secondary-button" type="button">Agent 图片问答</button>
+              <div class="message" id="image-search-message"></div>
+            </form>
+            <div class="multimodal-answer" id="multimodal-answer"></div>
+            <div class="multimodal-answer" id="multimodal-rag-answer"></div>
+            <div class="image-results" id="image-results"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const api = '/api/v1';
+    const byId = id => document.getElementById(id);
+    const setMessage = (id, text, isError = false) => { const node = byId(id); node.textContent = text; node.className = `message${isError ? ' error' : ''}`; };
+    async function readError(response) { try { const body = await response.json(); return body.detail || '请求失败，请稍后重试。'; } catch { return '请求失败，请稍后重试。'; } }
+    function renderDocuments(documents) {
+      const list = byId('source-list'); list.replaceChildren();
+      if (!documents.length) { const empty = document.createElement('div'); empty.className = 'empty-sources'; empty.textContent = '尚未上传文档'; list.append(empty); return; }
+      documents.forEach(document => { const row = document.createElement('div'); row.className = 'source-row'; const name = document.createElement('div'); name.className = 'source-name'; name.title = document.source_name; name.textContent = document.source_name; const meta = document.createElement('div'); meta.className = 'source-meta'; meta.textContent = `${document.chunks} 个文本块`; const remove = document.createElement('button'); remove.className = 'remove-button'; remove.type = 'button'; remove.textContent = '删除'; remove.addEventListener('click', async () => { if (!confirm(`确认删除《${document.source_name}》及其全部索引吗？`)) return; const response = await fetch(`${api}/documents/${encodeURIComponent(document.source_name)}`, {method:'DELETE'}); if (!response.ok) return setMessage('upload-message', await readError(response), true); setMessage('upload-message', `已删除《${document.source_name}》。`); await refreshStatus(); }); row.append(name, meta, remove); list.append(row); });
+    }
+    async function refreshStatus() {
+      try {
+        const [statusResponse, documentsResponse] = await Promise.all([fetch(`${api}/knowledge-base`), fetch(`${api}/documents`)]);
+        const data = await statusResponse.json(); const documentData = await documentsResponse.json();
+        byId('chunk-count').textContent = data.chunks;
+        byId('dimension').textContent = data.vector_dimension ? `${data.vector_dimension} 维向量` : '尚未建立向量索引';
+        renderDocuments(documentData.documents);
+        byId('connection-status').textContent = '知识库连接正常';
+      } catch { byId('connection-status').textContent = '无法连接知识库'; }
+      await refreshImageStatus();
+    }
+    async function refreshImageStatus() {
+      try { const response = await fetch(`${api}/image-knowledge-base`); const data = await response.json(); byId('image-index-status').textContent = data.images ? `当前已索引 ${data.images} 张参考图片 · ${data.vector_dimension} 维视觉向量` : '尚未建立视觉参考图库。'; }
+      catch { byId('image-index-status').textContent = '无法读取视觉图库状态。'; }
+    }
+    byId('files').addEventListener('change', event => {
+      const names = [...event.target.files].map(file => file.name);
+      byId('file-list').textContent = names.length ? `已选择：${names.join('、')}` : '尚未选择文件';
+    });
+    byId('upload-form').addEventListener('submit', async event => {
+      event.preventDefault(); const files = byId('files').files;
+      if (!files.length) return setMessage('upload-message', '请先选择至少一份文档。', true);
+      const button = byId('upload-button'); button.disabled = true; button.textContent = '正在建立索引…'; setMessage('upload-message', '正在解析、切分并生成向量，请稍候。');
+      const form = new FormData(); [...files].forEach(file => form.append('files', file));
+      try { const response = await fetch(`${api}/documents`, { method:'POST', body:form }); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); setMessage('upload-message', `上传成功：新增 ${data.chunks_added} 个文本块。`); byId('files').value = ''; byId('file-list').textContent = '尚未选择文件'; await refreshStatus(); }
+      catch (error) { setMessage('upload-message', error.message, true); }
+      finally { button.disabled = false; button.textContent = '上传并建立索引'; }
+    });
+    byId('chat-form').addEventListener('submit', async event => {
+      event.preventDefault(); const question = byId('question').value.trim(); if (!question) return;
+      const button = byId('chat-button'); button.disabled = true; button.textContent = '正在检索并生成…'; setMessage('chat-message', '正在检索相关资料并生成回答。');
+      try { const response = await fetch(`${api}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({question, top_k:5}) }); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); byId('answer-text').textContent = data.answer; const list = byId('citations'); list.replaceChildren(); data.citations.forEach(item => { const node = document.createElement('details'); node.className = 'citation'; node.innerHTML = `<summary><b></b><span></span></summary><p></p>`; node.querySelector('b').textContent = item.source; node.querySelector('span').textContent = ` · ${item.location} · 相似度 ${item.score}`; node.querySelector('p').textContent = item.excerpt; list.append(node); }); byId('answer').classList.add('visible'); setMessage('chat-message', data.citations.length ? `已返回 ${data.citations.length} 条高相关引用。` : '未找到可引用资料。'); }
+      catch (error) { setMessage('chat-message', error.message, true); }
+      finally { button.disabled = false; button.textContent = '获取答案'; }
+    });
+    byId('clear-button').addEventListener('click', async () => { if (!confirm('确认清空全部文档和向量索引吗？此操作不可恢复。')) return; const response = await fetch(`${api}/knowledge-base`, {method:'DELETE'}); if (!response.ok) return setMessage('upload-message', await readError(response), true); setMessage('upload-message', '知识库已清空。'); byId('answer').classList.remove('visible'); await refreshStatus(); });
+    byId('image-files').addEventListener('change', event => { const names = [...event.target.files].map(file => file.name); byId('image-file-list').textContent = names.length ? `已选择：${names.join('、')}` : '尚未选择图片'; });
+    byId('query-image').addEventListener('change', event => { const file = event.target.files[0]; byId('query-image-name').textContent = file ? `已选择：${file.name}` : '尚未选择图片'; });
+    byId('image-index-form').addEventListener('submit', async event => {
+      event.preventDefault(); const files = byId('image-files').files; if (!files.length) return setMessage('image-index-message', '请先选择至少一张参考图片。', true);
+      const button = byId('image-index-button'); button.disabled = true; button.textContent = '正在生成视觉向量…'; const form = new FormData(); [...files].forEach(file => form.append('files', file));
+      try { const response = await fetch(`${api}/images`, {method:'POST', body:form}); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); setMessage('image-index-message', `上传成功：已索引 ${data.files_processed} 张图片，图库共 ${data.image_index_size} 张。`); byId('image-files').value = ''; byId('image-file-list').textContent = '尚未选择图片'; await refreshImageStatus(); }
+      catch (error) { setMessage('image-index-message', error.message, true); } finally { button.disabled = false; button.textContent = '上传并建立视觉索引'; }
+    });
+    byId('image-search-form').addEventListener('submit', async event => {
+      event.preventDefault(); const file = byId('query-image').files[0]; if (!file) return setMessage('image-search-message', '请先选择一张查询图片。', true);
+      const button = byId('image-search-button'); button.disabled = true; button.textContent = '正在检索…'; const form = new FormData(); form.append('file', file);
+      try { const response = await fetch(`${api}/image-search?top_k=5`, {method:'POST', body:form}); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); const list = byId('image-results'); list.replaceChildren(); data.results.forEach((item, index) => { const row = document.createElement('div'); row.className = 'image-result'; const id = item.image_id; if (/^\d{4}$/.test(id)) { const image = document.createElement('img'); image.src = `${api}/university-satellite/${id}`; image.alt = item.source_name; row.append(image); } const name = document.createElement('b'); name.textContent = `#${index + 1} ${item.source_name}`; const score = document.createElement('span'); score.textContent = `相似度 ${item.score}`; row.append(name, score); list.append(row); }); setMessage('image-search-message', data.results.length ? `已返回 ${data.results.length} 张相似图片。` : '视觉图库为空，请先上传参考图片。'); }
+      catch (error) { setMessage('image-search-message', error.message, true); } finally { button.disabled = false; button.textContent = '查找相似图片'; }
+    });
+    byId('multimodal-button').addEventListener('click', async () => {
+      const file = byId('query-image').files[0]; if (!file) return setMessage('image-search-message', '请先选择一张查询图片。', true);
+      const button = byId('multimodal-button'); button.disabled = true; button.textContent = '正在理解并检索…'; const form = new FormData(); form.append('file', file); form.append('prompt', '请简要描述这张图片中可见的内容。'); form.append('top_k', '5');
+      try { const response = await fetch(`${api}/multimodal-image-query`, {method:'POST', body:form}); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); const answer = byId('multimodal-answer'); answer.textContent = `图片理解：\n${data.analysis}`; answer.classList.add('visible'); const list = byId('image-results'); list.replaceChildren(); data.matches.forEach((item, index) => { const row = document.createElement('div'); row.className = 'image-result'; const name = document.createElement('b'); name.textContent = `#${index + 1} ${item.source_name}`; const score = document.createElement('span'); score.textContent = `相似度 ${item.score}`; row.append(name, score); list.append(row); }); setMessage('image-search-message', `已完成图片理解，并返回 ${data.matches.length} 张相似图片。`); }
+      catch (error) { setMessage('image-search-message', error.message, true); } finally { button.disabled = false; button.textContent = '理解图片并检索'; }
+    });
+    byId('multimodal-rag-button').addEventListener('click', async () => {
+      const file = byId('query-image').files[0]; const question = byId('multimodal-question').value.trim();
+      if (!file) return setMessage('image-search-message', '请先选择一张查询图片。', true);
+      if (!question) return setMessage('image-search-message', '请输入需要结合图片和知识库回答的问题。', true);
+      const button = byId('multimodal-rag-button'); button.disabled = true; button.textContent = '正在融合图片与知识…'; const form = new FormData(); form.append('file', file); form.append('question', question); form.append('top_k', '5');
+      try { const response = await fetch(`${api}/multimodal-rag-query`, {method:'POST', body:form}); if (!response.ok) throw new Error(await readError(response)); const data = await response.json(); const answer = byId('multimodal-rag-answer'); const sources = data.citations.length ? `\n\n文本引用：${data.citations.map((item, index) => `[${index + 1}] ${item.source}`).join('；')}` : ''; answer.textContent = `多模态回答：\n${data.answer}${sources}`; answer.classList.add('visible'); const list = byId('image-results'); list.replaceChildren(); data.matches.forEach((item, index) => { const row = document.createElement('div'); row.className = 'image-result'; const name = document.createElement('b'); name.textContent = `#${index + 1} ${item.source_name}`; const score = document.createElement('span'); score.textContent = `相似度 ${item.score}`; row.append(name, score); list.append(row); }); setMessage('image-search-message', `已融合 ${data.citations.length} 条文本引用和 ${data.matches.length} 条视觉检索结果。`); }
+      catch (error) { setMessage('image-search-message', error.message, true); } finally { button.disabled = false; button.textContent = '多模态知识问答'; }
+    });
+    byId('agent-image-button').addEventListener('click', async () => {
+      const file=byId('query-image').files[0], question=byId('multimodal-question').value.trim(); if(!file||!question) return setMessage('image-search-message','请先选择图片并输入问题。',true);
+      const button=byId('agent-image-button'); button.disabled=true; button.textContent='Agent 正在调用工具…'; const form=new FormData(); form.append('file',file); form.append('question',question);
+      try { const response=await fetch(`${api}/agent/image`,{method:'POST',body:form}); if(!response.ok) throw new Error(await readError(response)); const data=await response.json(); const answer=byId('multimodal-rag-answer'); answer.textContent=`Agent 多模态回答：\n${data.answer}`; answer.classList.add('visible'); setMessage('image-search-message',`Agent 已完成图片理解、视觉检索与知识检索。`); }
+      catch(error){setMessage('image-search-message',error.message,true);} finally {button.disabled=false;button.textContent='Agent 图片问答';}
+    });
+    byId('agent-button').addEventListener('click', async () => { const question=byId('agent-question').value.trim(); if(!question) return setMessage('agent-message','请输入问题。',true); const button=byId('agent-button'); button.disabled=true; button.textContent='Agent 正在选择工具…'; try { const response=await fetch(`${api}/agent`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question})}); if(!response.ok) throw new Error(await readError(response)); const data=await response.json(); const answer=byId('agent-answer'); answer.textContent=`调用工具：${data.route}\n\n${data.answer}`; answer.classList.add('visible'); setMessage('agent-message','Agent 执行完成。'); } catch(error){setMessage('agent-message',error.message,true);} finally {button.disabled=false;button.textContent='让 Agent 执行';} });
+    refreshStatus();
+  </script>
+</body>
+</html>

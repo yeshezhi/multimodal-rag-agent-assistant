@@ -1,0 +1,6 @@
+[
+  {"question": "员工年假一共有几天？", "expected_source": null},
+  {"question": "出差住宿每天的报销上限是多少？", "expected_source": null},
+  {"question": "公司为员工提供哪些商业保险？", "expected_source": null},
+  {"question": "春节假期的值班补贴标准是什么？", "expected_source": null}
+]

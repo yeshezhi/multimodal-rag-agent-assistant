@@ -1,0 +1,94 @@
+# 企业知识库 RAG（阶段 1）
+
+多模态智能知识库助手的第一阶段：解析 PDF、Word、Markdown、TXT 文档，使用 BGE-M3 生成向量并写入 FAISS；检索到的文本块会作为上下文提供给本地 Qwen，再返回带来源引用的回答。
+
+> `demo_documents/` 中的资料均为虚构演示语料，仅用于展示检索、引用、拒答与评估能力。
+
+## 架构
+
+```mermaid
+flowchart LR
+    A["PDF / DOCX / Markdown / TXT"] --> B["文档解析"]
+    B --> C["文本切分\nLangChain"]
+    C --> D["BGE-M3 Embedding"]
+    D --> E[("FAISS 向量索引")]
+    Q["用户问题"] --> QE["BGE-M3 Query Embedding"]
+    QE --> E
+    E --> R["Top-K 检索 + 相似度阈值"]
+    R --> L["Qwen3-VL-4B-Instruct"]
+    L --> O["回答 + 可追溯引用"]
+```
+
+## 已实现能力
+
+- 文档上传和解析：PDF、`.docx`、Markdown、TXT，单文件最大 25MB。
+- 中文语义切分：LangChain `RecursiveCharacterTextSplitter`。
+- 向量检索：本地 BGE-M3（1024 维）和 FAISS 内积索引持久化。
+- 问答生成：本地 Qwen3-VL-4B-Instruct；答案仅依据检索上下文生成。
+- 可信性控制：检索得分低于阈值时明确拒答，不编造内容。
+- 使用界面：上传、提问、引用展开、文档列表、单文档删除和清空知识库确认。
+- 检索评估：以题目—预期来源映射计算 Recall@K。
+
+## 本项目服务器运行方式
+
+```bash
+cd /home/cjy/project/multimodal-rag-assistant
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010
+```
+
+Windows 通过 SSH 隧道访问：
+
+```powershell
+ssh -N -L 8010:127.0.0.1:8010 my-ai-server
+```
+
+随后打开 `http://127.0.0.1:8010/`。推荐使用该网页，而非 Swagger 的上传表单。
+
+## API
+
+- `POST /api/v1/documents`：上传一个或多个文档。
+- `GET /api/v1/documents`：列出已上传文档与文本块数。
+- `DELETE /api/v1/documents/{source_name}`：删除一个文档的全部文本块并重建索引。
+- `POST /api/v1/chat`：提交 `{"question": "...", "top_k": 5}`。
+- `GET /api/v1/knowledge-base`：查看索引状态。
+- `DELETE /api/v1/knowledge-base`：清空索引。
+
+## 演示语料与评估
+
+`demo_documents/` 提供四份虚构企业制度资料，可和已上传的三份基础示例组合成完整演示知识库。`evaluation/questions.json` 包含 18 道问题及其预期来源。
+
+将语料上传后运行：
+
+```bash
+cd /home/cjy/project/multimodal-rag-assistant
+.venv/bin/python scripts/evaluate_retrieval.py --top-k 3 --device cpu
+```
+
+输出会逐题标记是否检索到预期来源，并汇总 `Recall@3`。
+
+本次演示语料的验证结果：18 道有依据问题在阈值 `0.50` 下均将预期来源召回至 Top-3；4 道知识库未覆盖的问题均在端到端问答中被拒答且不显示无关引用。离线评估默认在 CPU 运行，避免与常驻 Qwen 争抢显存。
+
+## 后续方向
+
+## 阶段 2：视觉检索（已启动）
+
+已复用 `Sample4Geo_copy` 中的 University DINOv3 训练权重，提供独立于文本 RAG 的视觉检索接口：
+
+- `POST /api/v1/images`：上传 JPG、PNG、WEBP 参考图片并建立图像 FAISS 索引。
+- `POST /api/v1/image-search?top_k=5`：上传一张查询图，返回最相似的参考图及相似度。
+- `GET /api/v1/image-knowledge-base`：查看视觉图库状态。
+
+视觉编码器固定使用 1024 维、L2 归一化的 DINOv3 检索 Embedding。当前默认在 CPU 执行，避免与常驻 Qwen 抢占 GPU 显存；后续可在显存充足时改为 CUDA。
+
+已在 University 数据集上完成跨视角验证：以地点 1059 的无人机图查询，两张卫星参考图中同地点 1059 排名第一（相似度 `0.8496`），地点 1060 为 `0.4990`。
+
+### Qwen-VL 图片理解（已接入）
+
+`POST /api/v1/multimodal-image-query` 使用同一张上传图片完成两项工作：
+
+1. 由本地 Qwen3-VL-4B-Instruct 描述可见内容；
+2. 由 DINOv3 查询视觉 FAISS，返回相似参考图片。
+
+网页中的“理解图片并检索”按钮调用该统一接口。已用 U1652 地点 1059 无人机图验证：Qwen-VL 给出航拍城市街区描述，DINOv3 的 Top-1 仍正确命中地点 1059 卫星图。
+
+下一步是将图片理解、视觉检索结果和文本知识库上下文合并为多模态 RAG 回答，并引入 Agent 工具调用。
