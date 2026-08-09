@@ -63,6 +63,11 @@ class FaissKnowledgeBase:
                 if index >= 0
             ]
 
+    def all_chunks(self) -> list[RetrievedChunk]:
+        """Return a snapshot for lightweight lexical recall before reranking."""
+        with self._lock:
+            return [RetrievedChunk(score=0.0, **record) for record in self._records]
+
     def status(self) -> tuple[int, int | None]:
         with self._lock:
             return len(self._records), self._index.d if self._index is not None else None

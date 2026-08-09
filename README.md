@@ -14,8 +14,9 @@ flowchart LR
     D --> E[("FAISS 向量索引")]
     Q["用户问题"] --> QE["BGE-M3 Query Embedding"]
     QE --> E
-    E --> R["Top-K 检索 + 相似度阈值"]
-    R --> L["Qwen3-VL-4B-Instruct"]
+    E --> R["稠密召回 + 关键词补召回"]
+    R --> RR["BGE Reranker 精排"]
+    RR --> L["Qwen3-VL-4B-Instruct"]
     L --> O["回答 + 可追溯引用"]
 ```
 
@@ -24,12 +25,23 @@ flowchart LR
 - 文档上传和解析：PDF、`.docx`、Markdown、TXT，单文件最大 25MB。
 - 中文语义切分：LangChain `RecursiveCharacterTextSplitter`。
 - 向量检索：本地 BGE-M3（1024 维）和 FAISS 内积索引持久化。
+- 混合检索：稠密语义召回与关键词补召回合并后，以本地 `bge-reranker-v2-m3` 交叉编码器精排。
 - 问答生成：本地 Qwen3-VL-4B-Instruct；答案仅依据检索上下文生成。
 - 可信性控制：检索得分低于阈值时明确拒答，不编造内容。
 - 使用界面：上传、提问、引用展开、文档列表、单文档删除和清空知识库确认。
-- 检索评估：以题目—预期来源映射计算 Recall@K。
+- 检索评估：以题目—预期来源映射验证真实的“召回 → 精排”链路。
 
 ## 本项目服务器运行方式
+
+模型权重不进入 Git 仓库。首次运行前请准备本地 BGE-M3、Qwen 和 DINOv3 权重；精排模型可通过 ModelScope 下载：
+
+```bash
+cd /home/cjy/project/multimodal-rag-assistant
+.venv/bin/pip install modelscope
+.venv/bin/modelscope download --model BAAI/bge-reranker-v2-m3 --local_dir models/bge-reranker-v2-m3
+```
+
+将 `.env.example` 复制为 `.env` 后，按机器实际路径填写模型位置。推荐保留 `RERANKER_DEVICE=cpu`，让 GPU 专用于 Qwen 推理。
 
 ```bash
 cd /home/cjy/project/multimodal-rag-assistant
@@ -64,13 +76,11 @@ cd /home/cjy/project/multimodal-rag-assistant
 .venv/bin/python scripts/evaluate_retrieval.py --top-k 3 --device cpu
 ```
 
-输出会逐题标记是否检索到预期来源，并汇总 `Recall@3`。
+输出会逐题标记是否检索到预期来源，并汇总混合检索与精排后的 `Pass@3`。精排模型默认使用 CPU，避免与 Qwen 争抢显存。
 
 本次演示语料的验证结果：18 道有依据问题在阈值 `0.50` 下均将预期来源召回至 Top-3；4 道知识库未覆盖的问题均在端到端问答中被拒答且不显示无关引用。离线评估默认在 CPU 运行，避免与常驻 Qwen 争抢显存。
 
-## 后续方向
-
-## 阶段 2：视觉检索（已启动）
+## 阶段 2：多模态检索与 Agent（已完成）
 
 已复用 `Sample4Geo_copy` 中的 University DINOv3 训练权重，提供独立于文本 RAG 的视觉检索接口：
 
@@ -91,4 +101,10 @@ cd /home/cjy/project/multimodal-rag-assistant
 
 网页中的“理解图片并检索”按钮调用该统一接口。已用 U1652 地点 1059 无人机图验证：Qwen-VL 给出航拍城市街区描述，DINOv3 的 Top-1 仍正确命中地点 1059 卫星图。
 
-下一步是将图片理解、视觉检索结果和文本知识库上下文合并为多模态 RAG 回答，并引入 Agent 工具调用。
+### 多模态 RAG 与 Agent
+
+- `POST /api/v1/multimodal-rag-query`：融合上传图片的 Qwen-VL 描述、DINOv3 视觉检索和文本知识库，返回带来源的回答。
+- `POST /api/v1/agent`：LangGraph Agent 可路由到“企业知识库检索”或“GPU 状态查询”工具。
+- `POST /api/v1/agent/image`：Agent 图片问答复用多模态 RAG 流程。
+
+当前系统已具备文本 RAG、图像检索、多模态回答和工具调用四条可演示链路；下一步建议以真实业务资料替换演示语料，并增加评测集和可观测性。

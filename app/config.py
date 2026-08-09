@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     rag_data_dir: Path = PROJECT_DIR / "data"
     embedding_model: str = "BAAI/bge-m3"
     embedding_device: str = "cuda"
+    reranker_model: str = str(PROJECT_DIR / "models" / "bge-reranker-v2-m3")
+    reranker_device: str = "cpu"
     qwen_model_path: Path = Path(
         "/home/cjy/robot_project/lingbot-vla-v2/lingbot-vla/Qwen3-VL-4B-Instruct"
     )

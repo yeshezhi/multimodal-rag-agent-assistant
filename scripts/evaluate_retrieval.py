@@ -10,8 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import get_settings
-from app.embeddings import BGEEmbedder
-from app.vector_store import FaissKnowledgeBase
+from app.rag import RagService
 
 
 def main() -> None:
@@ -33,14 +32,19 @@ def main() -> None:
 
     cases = json.loads(Path(args.cases).read_text(encoding="utf-8"))
     settings = get_settings()
-    store = FaissKnowledgeBase(settings.rag_data_dir)
-    embedder = BGEEmbedder(settings.embedding_model, args.device)
-    threshold = args.min_score if args.min_score is not None else settings.min_similarity_score
+    # Exercise the real online retrieval path: dense recall, lexical fallback,
+    # and cross-encoder reranking.  Keep inference on CPU so it never competes
+    # with the Qwen service on the RTX 4090.
+    settings.embedding_device = args.device
+    settings.reranker_device = args.device
+    if args.min_score is not None:
+        settings.min_similarity_score = args.min_score
+    service = RagService(settings)
 
     passed = 0
     for case in cases:
-        retrieved = store.search(embedder.encode_query(case["question"]), args.top_k)
-        sources = [item.source_name for item in retrieved if item.score >= threshold]
+        retrieved = service.retrieve_text(case["question"], args.top_k)
+        sources = [item.source_name for item in retrieved]
         ranked = [
             {"source": item.source_name, "score": round(item.score, 4)}
             for item in retrieved
@@ -61,7 +65,7 @@ def main() -> None:
             )
         )
     print(
-        f"Pass@{args.top_k} (threshold={threshold:.2f}): "
+        f"Hybrid Recall + Rerank Pass@{args.top_k}: "
         f"{passed}/{len(cases)} = {passed / len(cases):.1%}"
     )
 

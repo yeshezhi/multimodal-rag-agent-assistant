@@ -6,9 +6,13 @@ flowchart TB
         F["业务文档"] --> P["解析器"] --> S["中文文本切分"] --> EM["BGE-M3 文档向量"] --> V[("FAISS")]
     end
     subgraph Query["在线问答"]
-        U["用户问题"] --> QE["BGE-M3 查询向量"] --> RT["Top-K 检索"]
+        U["用户问题"] --> QE["BGE-M3 查询向量"] --> RT["稠密 Top-K 召回"]
+        U --> KW["关键词补召回"]
         V --> RT
-        RT --> G{"得分 ≥ 0.55?"}
+        RT --> RR["候选合并"]
+        KW --> RR
+        RR --> CE["BGE Reranker 精排"]
+        CE --> G{"存在可靠候选?"}
         G -- 否 --> NA["拒答：资料不足"]
         G -- 是 --> CT["上下文与来源拼接"] --> Q["本地 Qwen"] --> A["答案与引用"]
     end

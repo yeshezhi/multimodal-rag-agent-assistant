@@ -6,6 +6,7 @@ from .config import Settings
 from .documents import SourceDocument
 from .embeddings import BGEEmbedder
 from .llm import LocalQwenGenerator
+from .reranker import LocalReranker
 from .schemas import ChatResponse, Citation
 from .vector_store import FaissKnowledgeBase, RetrievedChunk
 from .vision import DinoVisionEmbedder
@@ -25,6 +26,7 @@ class RagService:
         self.settings = settings
         self.chunker = ChineseTextChunker()
         self.embedder = BGEEmbedder(settings.embedding_model, settings.embedding_device)
+        self.reranker = LocalReranker(settings.reranker_model, settings.reranker_device)
         self.store = FaissKnowledgeBase(settings.rag_data_dir)
         self.image_store = ImageFaissStore(settings.rag_data_dir)
         self.vision_embedder = DinoVisionEmbedder(
@@ -48,13 +50,7 @@ class RagService:
                 answer="根据当前知识库资料，无法确定。请先上传相关文档。",
                 citations=[],
             )
-        retrieved = self.store.search(
-            self.embedder.encode_query(question),
-            top_k or self.settings.default_top_k,
-        )
-        retrieved = [
-            chunk for chunk in retrieved if chunk.score >= self.settings.min_similarity_score
-        ]
+        retrieved = self.retrieve_text(question, top_k or self.settings.default_top_k)
         if not retrieved:
             return ChatResponse(
                 answer="根据当前知识库资料，无法确定。请先上传相关文档。",
@@ -68,7 +64,16 @@ class RagService:
             # unrelated retrieval as evidence in the UI.
             answer = re.sub(r"\s*\[\d+\]", "", answer).strip()
             return ChatResponse(answer=answer, citations=[])
-        return ChatResponse(answer=answer, citations=[self._citation(chunk) for chunk in retrieved])
+        cited_numbers = {int(number) for number in re.findall(r"\[(\d+)\]", answer)}
+        cited_chunks = [
+            chunk
+            for number, chunk in enumerate(retrieved, start=1)
+            if number in cited_numbers
+        ]
+        return ChatResponse(
+            answer=answer,
+            citations=[self._citation(chunk) for chunk in cited_chunks],
+        )
 
     def status(self) -> tuple[int, int | None]:
         return self.store.status()
@@ -97,6 +102,55 @@ class RagService:
     def image_status(self) -> tuple[int, int | None]:
         return self.image_store.status()
 
+    def retrieve_text(self, question: str, top_k: int) -> list[RetrievedChunk]:
+        dense_candidates = self.store.search(
+            self.embedder.encode_query(question), max(top_k * 4, 12)
+        )
+        dense_candidates = [
+            chunk
+            for chunk in dense_candidates
+            if chunk.score >= self.settings.min_similarity_score
+        ]
+        lexical_candidates = self._keyword_retrieve(question, max(top_k * 4, 12))
+        candidates_by_id = {chunk.chunk_id: chunk for chunk in dense_candidates}
+        candidates_by_id.update({chunk.chunk_id: chunk for chunk in lexical_candidates})
+        candidates = list(candidates_by_id.values())
+        if not candidates:
+            return []
+        rerank_scores = self.reranker.rerank(question, [chunk.text for chunk in candidates])
+        ranked = sorted(zip(candidates, rerank_scores), key=lambda item: item[1], reverse=True)
+        return [
+            RetrievedChunk(
+                chunk_id=chunk.chunk_id,
+                source_name=chunk.source_name,
+                location=chunk.location,
+                text=chunk.text,
+                score=float(rerank_score),
+            )
+            for chunk, rerank_score in ranked[:top_k]
+        ]
+
+    def _keyword_retrieve(self, question: str, top_k: int) -> list[RetrievedChunk]:
+        """A small lexical fallback keeps exact policy terms from being missed.
+
+        Dense retrieval handles paraphrases well.  This branch deliberately scans
+        the local chunk metadata because the current knowledge base is small; its
+        candidates are then judged by the cross-encoder together with dense hits.
+        """
+        normalized = re.sub(r"\s+", "", question.lower())
+        terms = {normalized[index : index + 2] for index in range(len(normalized) - 1)}
+        terms.update(token.lower() for token in re.findall(r"[a-z0-9_]{2,}", question.lower()))
+        if not terms:
+            return []
+        scored: list[tuple[int, RetrievedChunk]] = []
+        for chunk in self.store.all_chunks():
+            searchable = f"{chunk.source_name}\n{chunk.text}".lower()
+            score = sum(searchable.count(term) for term in terms)
+            if score:
+                scored.append((score, chunk))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [chunk for _, chunk in scored[:top_k]]
+
     def analyze_image(
         self, content: bytes, prompt: str, top_k: int
     ) -> tuple[str, list[RetrievedImage]]:
@@ -113,12 +167,7 @@ class RagService:
         retrieved = []
         chunk_count, _ = self.store.status()
         if chunk_count:
-            retrieved = self.store.search(self.embedder.encode_query(question), top_k)
-            retrieved = [
-                chunk
-                for chunk in retrieved
-                if chunk.score >= self.settings.min_similarity_score
-            ]
+            retrieved = self.retrieve_text(question, top_k)
         text_context = self._build_context(retrieved) if retrieved else "无可靠文本检索结果。"
         visual_context = "\n".join(
             f"- {item.source_name}（视觉相似度 {item.score:.4f}）" for item in matches
